@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能药盒管理系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 50%, #e0e7ff 100%);
+            min-height: 100vh;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+        }
+
+        .compartment {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .compartment:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        .compartment.active {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+            border-color: #3b82f6;
+        }
+
+        .compartment.empty {
+            background: rgba(243, 244, 246, 0.6);
+            border-color: #d1d5db;
+        }
+
+        .pulse-ring {
+            position: absolute;
+            border-radius: 50%;
+            animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+
+        @keyframes pulse-ring {
+            0% { transform: scale(0.33); opacity: 1; }
+            80%, 100% { transform: scale(2); opacity: 0; }
+        }
+
+        .slide-in {
+            animation: slideIn 0.4s ease-out forwards;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .temp-gradient { background: linear-gradient(135deg, #fecaca 0%, #fee2e2 100%); }
+        .humidity-gradient { background: linear-gradient(135deg, #bfdbfe 0%, #dbeafe 100%); }
+        .success-gradient { background: linear-gradient(135deg, #bbf7d0 0%, #dcfce7 100%); }
+        .warning-gradient { background: linear-gradient(135deg, #fde68a 0%, #fef3c7 100%); }
+
+        .face-scan-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: #3b82f6;
+            box-shadow: 0 0 10px #3b82f6;
+            animation: scan 2s linear infinite;
+        }
+
+        @keyframes scan {
+            0% { top: 0; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 100%; opacity: 0; }
+        }
+
+        .medication-item {
+            transition: all 0.3s ease;
+        }
+
+        .medication-item:hover {
+            transform: translateX(5px);
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #3b82f6;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #3b82f6;
+        }
+
+        /* 滚动条美化 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.05);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(59, 130, 246, 0.3);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(59, 130, 246, 0.5);
+        }
+    </style>
+</head>
+<body class="text-slate-700">
+
+    <!-- 顶部导航 -->
+    <nav class="glass-card sticky top-0 z-50 px-6 py-4 mb-6">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
+                    <i class="fas fa-pills text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-slate-800">智能药盒 Pro</h1>
+                    <p class="text-xs text-slate-500">Smart Pill Box Management</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <button onclick="openFindBox()" class="glass-card px-4 py-2 rounded-lg hover:bg-white/80 transition flex items-center gap-2 text-sm font-medium text-blue-600">
+                    <i class="fas fa-search-location"></i>
+                    <span class="hidden sm:inline">查找药盒</span>
+                </button>
+                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white shadow-lg cursor-pointer hover:scale-105 transition">
+                    <i class="fas fa-user"></i>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 pb-8 space-y-6">
+
+        <!-- 环境监控与今日概览 -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- 温度 -->
+            <div class="glass-card rounded-2xl p-6 relative overflow-hidden group">
+                <div class="absolute -right-6 -top-6 w-24 h-24 bg-red-100 rounded-full opacity-50 group-hover:scale-110 transition"></div>
+                <div class="relative z-10">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="w-12 h-12 rounded-xl temp-gradient flex items-center justify-center text-red-600">
+                            <i class="fas fa-temperature-high text-xl"></i>
+                        </div>
+                        <span class="text-xs font-medium px-2 py-1 rounded-full bg-red-100 text-red-600">实时</span>
+                    </div>
+                    <h3 class="text-slate-500 text-sm font-medium mb-1">药盒温度</h3>
+                    <div class="flex items-baseline gap-2">
+                        <span class="text-3xl font-bold text-slate-800">24.5</span>
+                        <span class="text-lg text-slate-600">°C</span>
+                    </div>
+                    <div class="mt-3 flex items-center gap-2 text-sm text-slate-500">
+                        <i class="fas fa-check-circle text-green-500"></i>
+                        <span>温度适宜</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 湿度 -->
+            <div class="glass-card rounded-2xl p-6 relative overflow-hidden group">
+                <div class="absolute -right-6 -top-6 w-24 h-24 bg-blue-100 rounded-full opacity-50 group-hover:scale-110 transition"></div>
+                <div class="relative z-10">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="w-12 h-12 rounded-xl humidity-gradient flex items-center justify-center text-blue-600">
+                            <i class="fas fa-tint text-xl"></i>
+                        </div>
+                        <span class="text-xs font-medium px-2 py-1 rounded-full bg-blue-100 text-blue-600">实时</span>
+                    </div>
+                    <h3 class="text-slate-500 text-sm font-medium mb-1">药盒湿度</h3>
+                    <div class="flex items-baseline gap-2">
+                        <span class="text-3xl font-bold text-slate-800">45</span>
+                        <span class="text-lg text-slate-600">%</span>
+                    </div>
+                    <div class="mt-3 flex items-center gap-2 text-sm text-slate-500">
+                        <i class="fas fa-check-circle text-green-500"></i>
+                        <span>湿度正常</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 今日服药进度 -->
+            <div class="glass-card rounded-2xl p-6 relative overflow-hidden">
+                <div class="flex justify-between items-start mb-4">
+                    <div class="w-12 h-12 rounded-xl success-gradient flex items-center justify-center text-green-600">
+                        <i class="fas fa-calendar-check text-xl"></i>
+                    </div>
+                    <button onclick="showMedicationDetail()" class="text-blue-600 hover:text-blue-700 text-sm font-medium">
+                        详情 <i class="fas fa-chevron-right text-xs"></i>
+                    </button>
+                </div>
+                <h3 class="text-slate-500 text-sm font-medium mb-3">今日服药情况</h3>
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-2xl font-bold text-slate-800">3/4</span>
+                    <span class="text-sm text-slate-500">次</span>
+                </div>
+                <div class="w-full bg-slate-200 rounded-full h-2.5 mb-2">
+                    <div class="bg-gradient-to-r from-green-400 to-green-600 h-2.5 rounded-full" style="width: 75%"></div>
+                </div>
+                <p class="text-xs text-slate-500">已完成 75%，下一次 18:00</p>
+            </div>
+        </div>
+
+        <!-- 8仓状态与用药提醒 -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- 8个药仓状态 -->
+            <div class="lg:col-span-2 glass-card rounded-2xl p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fas fa-th-large text-blue-500"></i>
+                            药仓状态监控
+                            <span class="text-xs font-normal text-slate-500 bg-slate-100 px-2 py-1 rounded-full">8仓</span>
+                        </h2>
+                    </div>
+                    <div class="flex gap-2">
+                        <span class="flex items-center gap-1 text-xs text-slate-500">
+                            <span class="w-2 h-2 rounded-full bg-blue-500"></span>正常
+                        </span>
+                        <span class="flex items-center gap-1 text-xs text-slate-500">
+                            <span class="w-2 h-2 rounded-full bg-gray-300"></span>空仓
+                        </span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-4 gap-4">
+                    <!-- 1号仓 -->
+                    <div class="compartment active rounded-xl p-4 border-2 border-blue-200 cursor-pointer relative group" onclick="selectCompartment(1)">
+                        <div class="absolute -top-2 -right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg">1</div>
+                        <div class="h-16 flex items-center justify-center mb-2">
+                            <i class="fas fa-capsules text-3xl text-blue-600"></i>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-xs font-medium text-slate-600 mb-1">降压药</p>
+                            <p class="text-xs text-slate-400">剩余12粒</p>
+                        </div>
+                        <div class="absolute inset-0 bg-blue-500/5 rounded-xl opacity-0 group-hover:opacity-100 transition"></div>
+                    </div>
+
+                    <!-- 2号仓 -->
+                    <div class="compartment active rounded-xl p-4 border-2 border-blue-200 cursor-pointer relative group" onclick="selectCompartment(2)">
+                        <div class="absolute -top-2 -right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg">2</div>
+                        <div class="h-16 flex items-center justify-center mb-2">
+                            <i class="fas fa-tablets text-3xl text-blue-600"></i>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-xs font-medium text-slate-600 mb-1">维生素C</p>
+                            <p class="text-xs text-slate-400">剩余8粒</p>
+                        </div>
+                    </div>
+
+                    <!-- 3号仓 -->
+                    <div class="compartment active rounded-xl p-4 border-2 border-blue-200 cursor-pointer relative group" onclick="selectCompartment(3)">
+                        <div class="absolute -top-2 -right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg">3</div>
+                        <div class="h-16 flex items-center justify-center mb-2">
+                            <i class="fas fa-pills text-3xl text-blue-600"></i>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-xs font-medium text-slate-600 mb-1">阿司匹林</p>
+                            <p class="text-xs text-slate-400">剩余20粒</p>
+                        </div>
+                    </div>
+
+                    <!-- 4号仓 -->
+                    <div class="compartment empty rounded-xl p-4 border-2 border-gray-200 cursor-pointer relative group" onclick="selectCompartment(4)">
+                        <div class="absolute -top-2 -right-2 w-6 h-6 bg-gray-400 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg">4</div>
+                        <div class="h-16 flex items-center justify-center mb-2">
+                            <i class="fas fa-box-open text-3xl text-gray-400"></i>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-xs font-medium text-slate-400 mb-1">空仓</p>
+                            <p class="text-xs text-slate-300">点击添加</p>
+                        </div>
+                    </div>
+
+                    <!-- 5号仓 -->
+                    <div class="compartment active rounded-xl p-4 border-2 border-blue-200 cursor-pointer relative group" onclick="selectCompartment(5)">
+                        <div class="absolute -top-2 -right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg">5</div>
+                        <div class="h-16 flex items-center justify-center mb-2">
+                            <i class="fas fa-capsules text-3xl text-blue-600"></i>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-xs font-medium text-slate-600 mb-1">钙片</p>
+                            <p class="text-xs text-slate-400">剩余15粒</p>
+                        </div>
+                    </div>
+
+                    <!-- 6号仓 -->
+                    <div class="compartment active rounded-xl p-4 border-2 border-blue-200 cursor-pointer relative group" onclick="selectCompartment(6)">
+                        <div class="absolute -top-2 -right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg">6</div>
+                        <div class="h-16 flex items-center justify-center mb-2">
+                            <i class="fas fa-tablets text-3xl text-blue-600"></i>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-xs font-medium text-slate-600 mb-1">鱼油</p>
+                            <p class="text-xs text-slate-400">剩余30粒</p>
+                        </div>
+                    </div>
+
+                    <!-- 7号仓 -->
+                    <div class="compartment empty rounded-xl p-4 border-2 border-gray-200 cursor-pointer relative group" onclick="selectCompartment(7)">
+                        <div class="absolute -top-2 -right-2 w-6 h-6 bg-gray-400 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg">7</div>
+                        <div class="h-16 flex items-center justify-center mb-2">
+                            <i class="fas fa-box-open text-3xl text-gray-400"></i>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-xs font-medium text-slate-400 mb-1">空仓</p>
+                            <p class="text-xs text-slate-300">点击添加</p>
+                        </div>
+                    </div>
+
+                    <!-- 8号仓 -->
+                    <div class="compartment active rounded-xl p-4 border-2 border-blue-200 cursor-pointer relative group" onclick="selectCompartment(8)">
+                        <div class="absolute -top-2 -right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg">8</div>
+                        <div class="h-16 flex items-center justify-center mb-2">
+                            <i class="fas fa-pills text-3xl text-blue-600"></i>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-xs font-medium text-slate-600 mb-1">益生菌</p>
+                            <p class="text-xs text-slate-400">剩余10粒</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 用药提醒设置 -->
+            <div class="glass-card rounded-2xl p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fas fa-bell text-amber-500"></i>
+                        用药提醒
+                    </h2>
+                    <button onclick="addReminder()" class="w-8 h-8 rounded-full bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center transition shadow-lg shadow-blue-500/30">
+                        <i class="fas fa-plus text-sm"></i>
+                    </button>
+                </div>
+
+                <div class="space-y-4 max-h-[400px] overflow-y-auto pr-2">
+                    <!-- 提醒项目 1 -->
+                    <div class="bg-white/50 rounded-xl p-4 border border-blue-100 hover:border-blue-300 transition relative group">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-2xl font-bold text-slate-800">08:00</span>
+                                <span class="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-600">早餐前</span>
+                            </div>
+                            <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                                <input type="checkbox" name="toggle" id="toggle1" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer checked:right-0 checked:border-blue-600" checked/>
+                                <label for="toggle1" class="toggle-label block overflow-hidden h-5 rounded-full bg-gray-300 cursor-pointer checked:bg-blue-600"></label>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 text-sm text-slate-600 mb-2">
+                            <i class="fas fa-capsules text-blue-500"></i>
+                            <span>1号仓 降压药</span>
+                            <span class="text-slate-400">|</span>
+                            <span>1粒</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <button class="text-xs text-slate-500 hover:text-blue-600 transition"><i class="fas fa-edit"></i> 编辑</button>
+                            <button class="text-xs text-slate-500 hover:text-red-600 transition"><i class="fas fa-trash"></i> 删除</button>
+                        </div>
+                    </div>
+
+                    <!-- 提醒项目 2 -->
+                    <div class="bg-white/50 rounded-xl p-4 border border-blue-100 hover:border-blue-300 transition relative group">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-2xl font-bold text-slate-800">12:00</span>
+                                <span class="text-xs px-2 py-1 rounded-full bg-orange-100 text-orange-600">午餐后</span>
+                            </div>
+                            <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                                <input type="checkbox" name="toggle" id="toggle2" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer checked:right-0 checked:border-blue-600" checked/>
+                                <label for="toggle2" class="toggle-label block overflow-hidden h-5 rounded-full bg-gray-300 cursor-pointer checked:bg-blue-600"></label>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 text-sm text-slate-600 mb-2">
+                            <i class="fas fa-tablets text-blue-500"></i>
+                            <span>2号仓 维生素C</span>
+                            <span class="text-slate-400">|</span>
+                            <span>2粒</span>
+                        </div>
+                    </div>
+
+                    <!-- 提醒项目 3 -->
+                    <div class="bg-white/50 rounded-xl p-4 border border-blue-100 hover:border-blue-300 transition relative group">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-2xl font-bold text-slate-800">18:00</span>
+                                <span class="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-600">晚餐后</span>
+                            </div>
+                            <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                                <input type="checkbox" name="toggle" id="toggle3" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer checked:right-0 checked:border-blue-600"/>
+                                <label for="toggle3" class="toggle-label block overflow-hidden h-5 rounded-full bg-gray-300 cursor-pointer checked:bg-blue-600"></label>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 text-sm text-slate-600 mb-2">
+                            <i class="fas fa-pills text-blue-500"></i>
+                            <span>3号仓 阿司匹林</span>
+                            <span class="text-slate-400">|</span>
+                            <span>1粒</span>
+                        </div>
+                    </div>
+
+                    <!-- 提醒项目 4 -->
+                    <div class="bg-white/50 rounded-xl p-4 border border-blue-100 hover:border-blue-300 transition relative group opacity-60">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-2xl font-bold text-slate-800">21:00</span>
+                                <span class="text-xs px-2 py-1 rounded-full bg-indigo-100 text-indigo-600">睡前</span>
+                            </div>
+                            <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                                <input type="checkbox" name="toggle" id="toggle4" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer checked:right-0 checked:border-blue-600" checked/>
+                                <label for="toggle4" class="toggle-label block overflow-hidden h-5 rounded-full bg-gray-300 cursor-pointer checked:bg-blue-600"></label>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 text-sm text-slate-600 mb-2">
+                            <i class="fas fa-capsules text-blue-500"></i>
+                            <span>5号仓 钙片</span>
+                            <span class="text-slate-400">|</span>
+                            <span>1粒</span>
+                        </div>
+                        <div class="absolute top-2 right-2">
+                            <span class="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full">已完成</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 用药记录与人脸录入 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            <!-- 用药记录 -->
+            <div class="glass-card rounded-2xl p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fas fa-history text-purple-500"></i>
+                        用药记录
+                    </h2>
+                    <div class="flex gap-2">
+                        <button class="px-3 py-1 rounded-lg bg-blue-100 text-blue-600 text-sm font-medium">今日</button>
+                        <button class="px-3 py-1 rounded-lg hover:bg-slate-100 text-slate-600 text-sm font-medium transition">本周</button>
+                        <button class="px-3 py-1 rounded-lg hover:bg-slate-100 text-slate-600 text-sm font-medium transition">本月</button>
+                    </div>
+                </div>
+
+                <div class="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+                    <div class="medication-item flex items-center gap-4 p-3 rounded-xl bg-white/40 border border-transparent hover:border-blue-200 cursor-pointer">
+                        <div class="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-600 flex-shrink-0">
+                            <i class="fas fa-check"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex justify-between items-center mb-1">
+                                <h4 class="font-medium text-slate-800">降压药</h4>
+                                <span class="text-xs text-slate-500">08:05</span>
+                            </div>
+                            <p class="text-sm text-slate-500">1号仓 • 1粒 • 早餐前服用</p>
+                        </div>
+                        <div class="text-green-600 text-sm font-medium">按时</div>
+                    </div>
+
+                    <div class="medication-item flex items-center gap-4 p-3 rounded-xl bg-white/40 border border-transparent hover:border-blue-200 cursor-pointer">
+                        <div class="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-600 flex-shrink-0">
+                            <i class="fas fa-check"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex justify-between items-center mb-1">
+                                <h4 class="font-medium text-slate-800">维生素C</h4>
+                                <span class="text-xs text-slate-500">12:10</span>
+                            </div>
+                            <p class="text-sm text-slate-500">2号仓 • 2粒 • 午餐后服用</p>
+                        </div>
+                        <div class="text-green-600 text-sm font-medium">按时</div>
+                    </div>
+
+                    <div class="medication-item flex items-center gap-4 p-3 rounded-xl bg-white/40 border border-transparent hover:border-blue-200 cursor-pointer">
+                        <div class="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 flex-shrink-0">
+                            <i class="fas fa-exclamation"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex justify-between items-center mb-1">
+                                <h4 class="font-medium text-slate-800">阿司匹林</h4>
+                                <span class="text-xs text-slate-500">18:30</span>
+                            </div>
+                            <p class="text-sm text-slate-500">3号仓 • 1粒 • 晚餐后服用</p>
+                        </div>
+                        <div class="text-amber-600 text-sm font-medium">延迟30分</div>
+                    </div>
+
+                    <div class="medication-item flex items-center gap-4 p-3 rounded-xl bg-white/40 border border-transparent hover:border-blue-200 cursor-pointer">
+                        <div class="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-600 flex-shrink-0">
+                            <i class="fas fa-check"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex justify-between items-center mb-1">
+                                <h4 class="font-medium text-slate-800">钙片</h4>
+                                <span class="text-xs text-slate-500">昨天 21:00</span>
+                            </div>
+                            <p class="text-sm text-slate-500">5号仓 • 1粒 • 睡前服用</p>
+                        </div>
+                        <div class="text-green-600 text-sm font-medium">按时</div>
+                    </div>
+                </div>
+
+                <button class="w-full mt-4 py-3 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 hover:border-blue-400 hover:text-blue-600 transition flex items-center justify-center gap-2">
+                    <i class="fas fa-download"></i>
+                    导出用药报告
+                </button>
+            </div>
+
+            <!-- 人脸信息录入 -->
+            <div class="glass-card rounded-2xl p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fas fa-user-shield text-indigo-500"></i>
+                        人脸信息录入
+                    </h2>
+                    <span class="text-xs px-2 py-1 rounded-full bg-green-100 text-green-600">
+                        <i class="fas fa-shield-alt mr-1"></i>安全加密
+                    </span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div class="relative group cursor-pointer" onclick="startFaceScan()">
+                        <div class="aspect-square rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center border-2 border-dashed border-slate-300 group-hover:border-blue-400 transition overflow-hidden relative">
+                            <div class="absolute inset-0 bg-blue-500/5 opacity-0 group-hover:opacity-100 transition"></div>
+                            <div class="text-center z-10">
+                                <div class="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mx-auto mb-2 group-hover:scale-110 transition">
+                                    <i class="fas fa-plus text-2xl"></i>
+                                </div>
+                                <p class="text-sm font-medium text-slate-600">录入新用户</p>
+                                <p class="text-xs text-slate-400 mt-1">点击开始扫描</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 已录入用户 1 -->
+                    <div class="relative group">
+                        <div class="aspect-square rounded-xl bg-white p-2 shadow-sm border border-slate-200">
+                            <div class="w-full h-full rounded-lg bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center relative overflow-hidden">
+                                <i class="fas fa-user text-4xl text-slate-400"></i>
+                                <div class="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur p-2">
+                                    <p class="text-sm font-medium text-slate-800 text-center">张爷爷</p>
+                                    <p class="text-xs text-slate-500 text-center">主用户</p>
+                                </div>
+                                <button class="absolute top-2 right-2 w-6 h-6 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition flex items-center justify-center" onclick="deleteFace(this)">
+                                    <i class="fas fa-times text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 已录入用户 2 -->
+                    <div class="relative group">
+                        <div class="aspect-square rounded-xl bg-white p-2 shadow-sm border border-slate-200">
+                            <div class="w-full h-full rounded-lg bg-gradient-to-br from-pink-100 to-rose-100 flex items-center justify-center relative overflow-hidden">
+                                <i class="fas fa-user text-4xl text-slate-400"></i>
+                                <div class="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur p-2">
+                                    <p class="text-sm font-medium text-slate-800 text-center">李奶奶</p>
+                                    <p class="text-xs text-slate-500 text-center">家属</p>
+                                </div>
+                                <button class="absolute top-2 right-2 w-6 h-6 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition flex items-center justify-center" onclick="deleteFace(this)">
+                                    <i class="fas fa-times text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 已录入用户 3 -->
+                    <div class="relative group">
+                        <div class="aspect-square rounded-xl bg-white p-2 shadow-sm border border-slate-200">
+                            <div class="w-full h-full rounded-lg bg-gradient-to-br from-green-100 to-teal-100 flex items-center justify-center relative overflow-hidden">
+                                <i class="fas fa-user-nurse text-4xl text-slate-400"></i>
+                                <div class="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur p-2">
+                                    <p class="text-sm font-medium text-slate-800 text-center">护工小王</p>
+                                    <p class="text-xs text-slate-500 text-center">护理人员</p>
+                                </div>
+                                <button class="absolute top-2 right-2 w-6 h-6 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition flex items-center justify-center" onclick="deleteFace(this)">
+                                    <i class="fas fa-times text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-info-circle text-blue-500 mt-0.5"></i>
+                        <div>
+                            <p class="text-sm font-medium text-blue-800 mb-1">人脸识别功能</p>
+                            <p class="text-xs text-blue-600 leading-relaxed">
+                                已录入 3 位用户。开启人脸验证后，只有通过验证的用户才能取药，确保用药安全。支持活体检测，防止照片欺骗。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 查找药盒弹窗 -->
+    <div id="findBoxModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-card rounded-2xl p-8 max-w-md w-full text-center slide-in">
+            <div class="relative w-24 h-24 mx-auto mb-6">
+                <div class="absolute inset-0 bg-blue-500 rounded-full opacity-20 animate-ping"></div>
+                <div class="relative w-24 h-24 bg-blue-500 rounded-full flex items-center justify-center text-white text-3xl shadow-lg shadow-blue-500/50">
+                    <i class="fas fa-map-marker-alt"></i>
+                </div>
+                <div class="pulse-ring inset-0 border-4 border-blue-400"></div>
+            </div>
+            <h3 class="text-xl font-bold text-slate-800 mb-2">正在查找药盒...</h3>
+            <p class="text-slate-500 mb-6">药盒正在发出蜂鸣声和闪光，请留意周围环境</p>
+            <div class="flex gap-3">
+                <button onclick="stopFindBox()" class="flex-1 py-3 rounded-xl bg-slate-200 text-slate-700 font-medium hover:bg-slate-300 transition">
+                    停止查找
+                </button>
+                <button onclick="closeFindBox()" class="flex-1 py-3 rounded-xl bg-blue-500 text-white font-medium hover:bg-blue-600 transition shadow-lg shadow-blue-500/30">
+                    已找到
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 人脸扫描弹窗 -->
+    <div id="faceScanModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-card rounded-2xl p-8 max-w-md w-full text-center slide-in bg-white/90">
+            <div class="relative w-48 h-48 mx-auto mb-6 rounded-2xl overflow-hidden bg-slate-900">
+                <div class="absolute inset-0 bg-gradient-to-b from-transparent via-blue-500/10 to-transparent">
+                    <div class="face-scan-line"></div>
+                </div>
+                <div class="absolute inset-0 flex items-center justify-center">
+                    <i class="fas fa-user-circle text-6xl text-slate-600"></i>
+                </div>
+                <div class="absolute inset-0 border-2 border-blue-500/50 rounded-2xl">
+                    <div class="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-blue-500"></div>
+                    <div class="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-blue-500"></div>
+                    <div class="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-blue-500"></div>
+                    <div class="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-blue-500"></div>
+                </div>
+            </div>
+            <h3 class="text-xl font-bold text-slate-800 mb-2">请将面部对准框内</h3>
+            <p class="text-slate-500 mb-6">保持面部在取景框内，等待扫描完成...</p>
+            <div class="w-full bg-slate-200 rounded-full h-2 mb-6">
+                <div class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: 0%" id="scanProgress"></div>
+            </div>
+            <button onclick="cancelFaceScan()" class="w-full py-3 rounded-xl border-2 border-slate-300 text-slate-600 font-medium hover:bg-slate-50 transition">
+                取消
+            </button>
+        </div>
+    </div>
+
+    <!-- 药仓详情弹窗 -->
+    <div id="compartmentModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-card rounded-2xl p-6 max-w-sm w-full slide-in">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-slate-800" id="modalTitle">1号仓详情</h3>
+                <button onclick="closeCompartmentModal()" class="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center transition">
+                    <i class="fas fa-times text-slate-500"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div class="flex items-center gap-4 p-4 bg-blue-50 rounded-xl">
+                    <div class="w-16 h-16 rounded-full bg-white flex items-center justify-center text-blue-600 text-2xl shadow-sm">
+                        <i class="fas fa-capsules"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm text-slate-500">药品名称</p>
+                        <p class="text-lg font-bold text-slate-800">降压药</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="p-3 bg-slate-50 rounded-lg">
+                        <p class="text-xs text-slate-500 mb-1">剩余数量</p>
+                        <p class="text-lg font-bold text-slate-800">12 粒</p>
+                    </div>
+                    <div class="p-3 bg-slate-50 rounded-lg">
+                        <p class="text-xs text-slate-500 mb-1">有效期至</p>
+                        <p class="text-lg font-bold text-slate-800">2025-08</p>
+                    </div>
+                </div>
+                <div class="p-3 bg-slate-50 rounded-lg">
+                    <p class="text-xs text-slate-500 mb-1">服用说明</p>
+                    <p class="text-sm text-slate-700">每日一次，每次1粒，早餐前服用</p>
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button class="flex-1 py-2.5 rounded-xl bg-blue-500 text-white font-medium hover:bg-blue-600 transition shadow-lg shadow-blue-500/30">
+                        补充药品
+                    </button>
+                    <button class="flex-1 py-2.5 rounded-xl border-2 border-slate-300 text-slate-700 font-medium hover:bg-slate-50 transition">
+                        修改信息
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 查找药盒功能
+        function openFindBox() {
+            document.getElementById('findBoxModal').classList.remove('hidden');
+            // 模拟查找动画
+            setTimeout(() => {
+                // 可以在这里添加实际的查找逻辑
+            }, 1000);
+        }
+
+        function closeFindBox() {
+            document.getElementById('findBoxModal').classList.add('hidden');
+        }
+
+        function stopFindBox() {
+            document.getElementById('findBoxModal').classList.add('hidden');
+        }
+
+        // 人脸扫描功能
+        function startFaceScan() {
+            const modal = document.getElementById('faceScanModal');
+            modal.classList.remove('hidden');
+            
+            // 模拟扫描进度
+            let progress = 0;
+            const progressBar = document.getElementById('scanProgress');
+            const interval = setInterval(() => {
+                progress += 10;
+                progressBar.style.width = progress + '%';
+                
+                if (progress >= 100) {
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        alert('人脸录入成功！');
+                        cancelFaceScan();
+                    }, 500);
+                }
+            }, 200);
+        }
+
+        function cancelFaceScan() {
+            document.getElementById('faceScanModal').classList.add('hidden');
+            document.getElementById('scanProgress').style.width = '0%';
+        }
+
+        // 删除人脸
+        function deleteFace(btn) {
+            if (confirm('确定要删除该用户的人脸信息吗？')) {
+                btn.closest('.relative.group').remove();
+            }
+        }
+
+        // 药仓选择
+        function selectCompartment(id) {
+            document.getElementById('modalTitle').textContent = id + '号仓详情';
+            document.getElementById('compartmentModal').classList.remove('hidden');
+        }
+
+        function closeCompartmentModal() {
+            document.getElementById('compartmentModal').classList.add('hidden');
+        }
+
+        // 添加提醒
+        function addReminder() {
+            alert('打开添加提醒表单（可扩展为完整表单）');
+        }
+
+        // 显示用药详情
+        function showMedicationDetail() {
+            alert('查看今日详细用药计划');
+        }
+
+        // 点击模态框外部关闭
+        window.onclick = function(event) {
+            if (event.target.classList.contains('fixed')) {
+                event.target.classList.add('hidden');
+            }
+        }
+
+        // 实时更新时间（模拟）
+        setInterval(() => {
+            // 这里可以添加实时数据更新逻辑
+        }, 60000);
+    </script>
+</body>
+</html>
